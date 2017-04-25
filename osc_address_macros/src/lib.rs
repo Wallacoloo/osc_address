@@ -10,18 +10,18 @@ use proc_macro::TokenStream;
 use syn::{MacroInput, MetaItem, NestedMetaItem};
 
 #[proc_macro_derive(OscAddress, attributes(osc_address))]
-pub fn num_fields(input: TokenStream) -> TokenStream {
+pub fn derive_osc_address(input: TokenStream) -> TokenStream {
     // Parse the string representation into a syntax tree
     let ast = syn::parse_derive_input(&input.to_string()).unwrap();
 
     // Build the output
-    let expanded = impl_hello_world(&ast);
+    let expanded = impl_osc_address(&ast);
 
     // Return the generated impl as a TokenStream
     expanded.parse().unwrap()
 }
 
-fn impl_hello_world(ast: &MacroInput) -> quote::Tokens {
+fn impl_osc_address(ast: &MacroInput) -> quote::Tokens {
     let typename = &ast.ident;
     // match the element the #[derive(OscAddress)] statement is applied to,
     // e.g. "enum { ... }" in
