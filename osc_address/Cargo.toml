@@ -1,0 +1,7 @@
+[package]
+name = "osc_address"
+version = "0.2.0"
+authors = ["Colin Wallace <wallacoloo@gmail.com>"]
+
+[dependencies]
+
