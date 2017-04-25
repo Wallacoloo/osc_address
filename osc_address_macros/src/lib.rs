@@ -9,6 +9,22 @@ extern crate syn;
 use proc_macro::TokenStream;
 use syn::{MacroInput, MetaItem, NestedMetaItem};
 
+/// Collects all info from #[osc_address(..)] attributes for a given
+/// enum variant.
+#[derive(Debug)]
+struct OscRouteProperties {
+    address: OscBranchFmt,
+}
+
+/// Describes how to format the portion of the OSC address between adjacent
+/// pairs of '/'
+#[derive(Debug)]
+enum OscBranchFmt {
+    /// This branch of the OSC address is a literal string,
+    /// e.g. "world" in "/hello/world"
+    Str(String),
+}
+
 #[proc_macro_derive(OscAddress, attributes(osc_address))]
 pub fn derive_osc_address(input: TokenStream) -> TokenStream {
     // Parse the string representation into a syntax tree
@@ -33,7 +49,8 @@ fn impl_osc_address(ast: &MacroInput) -> quote::Tokens {
             // attrs applied to each variant of the enum
             let arms = variants.iter().map(|variant| {
                 let variant_ident = variant.ident.clone();
-                let variant_address = get_variant_address(variant).unwrap();
+                let variant_props = get_variant_props(variant);
+                let OscBranchFmt::Str(variant_address) = variant_props.address;
                 quote! {
                     #typename::#variant_ident => {
                         address.push_str(#variant_address);
@@ -44,7 +61,6 @@ fn impl_osc_address(ast: &MacroInput) -> quote::Tokens {
             quote! {
                 match *self {
                     #(#arms)*
-                    //"test".to_string()
                 }
             }
         },
@@ -67,19 +83,6 @@ fn impl_osc_address(ast: &MacroInput) -> quote::Tokens {
     }
 }
 
-/// Within an enum like:
-/// #[derive(OscAddress)]
-/// enum MyMsg {
-///     #[osc_address(address = "/opta")]
-///     OptionA(..),
-///     #[osc_address(address = "/optb")]
-///     OptionB(..),
-/// }
-/// this function will return "/opta" or "/optb", based on the Variant passed.
-fn get_variant_address(variant: &syn::Variant) -> Option<&String> {
-    // TODO: make sure there's only one address!
-    matching_osc_meta_strs(variant, "address").next()
-}
 
 /// Return all NestedMetaItems corresponding to
 /// #[osc_address ...] attributes
@@ -90,28 +93,35 @@ fn get_osc_meta_items<'a>(variant: &'a syn::Variant) -> impl Iterator<Item=&'a s
     }).flat_map(|attrs| attrs)
 }
 
-/// Return all values of
-/// #[osc_address(attr_name=<value>)]
-/// <value> could be Lit::Str, Lit::Int, etc.
-fn matching_osc_meta_vals<'a>(variant: &'a syn::Variant, attr_name: &'a str) -> impl Iterator<Item=&'a syn::Lit> + 'a {
-    get_osc_meta_items(variant).filter_map(move |nest_item| match *nest_item {
-        NestedMetaItem::MetaItem(ref item) => match *item {
-            MetaItem::NameValue(ref name, ref lit) if name == attr_name => Some(lit),
-            _ => None,
-        },
-        _ => None
-    })
+
+fn get_variant_props(variant: &syn::Variant) -> OscRouteProperties {
+    let mut addresses = Vec::new();
+    // Iter all X in #[osc_address X]
+    for item in get_osc_meta_items(variant) {
+        match *item {
+            NestedMetaItem::MetaItem(ref item) => match *item {
+                MetaItem::NameValue(ref name, ref lit) => if name == "address" {
+                    addresses.push(OscBranchFmt::new(lit));
+                },
+                _ => panic!("Unsupported #[osc_address] directive: {:?}", item),
+            },
+            _ => panic!("Unsupported #[osc_address] directive: {:?}", item),
+        }
+    }
+    if addresses.len() != 1 {
+        panic!("Expected exactly 1 #[osc_address(address=...)] for each enum variant. Saw: {:?}", addresses);
+    }
+    OscRouteProperties {
+        address: addresses.into_iter().next().unwrap()
+    }
 }
 
-/// Return all values of
-/// #[osc_address(attr_name=<value>)]
-/// where <value> is a string.
-fn matching_osc_meta_strs<'a>(variant: &'a syn::Variant, attr_name: &'a str) -> impl Iterator<Item=&'a String> + 'a {
-    matching_osc_meta_vals(variant, attr_name).filter_map(|lit| {
-        match *lit {
-            syn::Lit::Str(ref s, ref _style) => Some(s),
-            // TODO: error on not-a-string.
-            _ => None,
+impl OscBranchFmt {
+    fn new(fmt: &syn::Lit) -> Self {
+        match *fmt {
+            syn::Lit::Str(ref s, ref _style) => OscBranchFmt::Str(s.clone()),
+            _ => panic!("Expected a string in #[osc_address(address=...)]; got: {:?}", fmt),
         }
-    })
+    }
 }
+
