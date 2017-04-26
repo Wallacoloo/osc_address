@@ -11,3 +11,6 @@ pub trait OscAddress {
     //fn nested_serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error>;
 }
 
+impl OscAddress for () {
+    fn build_address(&self, address: &mut String) {}
+}

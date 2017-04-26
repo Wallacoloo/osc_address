@@ -34,7 +34,9 @@ pub fn derive_osc_address(input: TokenStream) -> TokenStream {
     let expanded = impl_osc_address(&ast);
 
     // Return the generated impl as a TokenStream
-    expanded.parse().unwrap()
+    let ts = expanded.parse().unwrap();
+    println!("{}", ts);
+    ts
 }
 
 fn impl_osc_address(ast: &MacroInput) -> quote::Tokens {
@@ -54,8 +56,7 @@ fn impl_osc_address(ast: &MacroInput) -> quote::Tokens {
                 quote! {
                     #typename::#variant_ident(_path_args, msg_data) => {
                         address.push_str(#variant_address);
-                        //msg_data.build_address(&mut address);
-                        OscAddressTerm::from(&msg_data).build_address(address);
+                        msg_data.build_address(address);
                     }
                 }
             });
@@ -72,23 +73,10 @@ fn impl_osc_address(ast: &MacroInput) -> quote::Tokens {
     };
 
     quote! {
-        extern crate serde;
-        use serde::ser::{Error, Serialize, Serializer};
         impl OscAddress for #typename {
             fn build_address(&self, address: &mut String) {
                 #build_address_impl
             }
-        }
-        struct OscAddressTerm<'a, T: Serialize + 'a> {
-            msg_data: &'a T,
-        }
-        impl<'a, T: Serialize + 'a> From<&'a T> for OscAddressTerm<'a, T> {
-            fn from(msg_data: &'a T) -> Self {
-                Self{ msg_data }
-            }
-        }
-        impl<'a, T: Serialize + 'a> OscAddress for OscAddressTerm<'a, T> {
-            fn build_address(&self, address: &mut String) {}
         }
     }
 }
