@@ -1,7 +1,7 @@
+#![recursion_limit="128"]
 #![feature(conservative_impl_trait)]
 extern crate osc_address;
 extern crate proc_macro;
-
 #[macro_use]
 extern crate quote;
 extern crate syn;
@@ -52,8 +52,10 @@ fn impl_osc_address(ast: &MacroInput) -> quote::Tokens {
                 let variant_props = get_variant_props(variant);
                 let OscBranchFmt::Str(variant_address) = variant_props.address;
                 quote! {
-                    #typename::#variant_ident => {
+                    #typename::#variant_ident(_path_args, msg_data) => {
                         address.push_str(#variant_address);
+                        //msg_data.build_address(&mut address);
+                        OscAddressTerm::from(&msg_data).build_address(address);
                     }
                 }
             });
@@ -70,15 +72,23 @@ fn impl_osc_address(ast: &MacroInput) -> quote::Tokens {
     };
 
     quote! {
+        extern crate serde;
+        use serde::ser::{Error, Serialize, Serializer};
         impl OscAddress for #typename {
             fn build_address(&self, address: &mut String) {
                 #build_address_impl
             }
-            fn get_address(&self) -> String {
-                let mut s = String::new();
-                self.build_address(&mut s);
-                s
+        }
+        struct OscAddressTerm<'a, T: Serialize + 'a> {
+            msg_data: &'a T,
+        }
+        impl<'a, T: Serialize + 'a> From<&'a T> for OscAddressTerm<'a, T> {
+            fn from(msg_data: &'a T) -> Self {
+                Self{ msg_data }
             }
+        }
+        impl<'a, T: Serialize + 'a> OscAddress for OscAddressTerm<'a, T> {
+            fn build_address(&self, address: &mut String) {}
         }
     }
 }

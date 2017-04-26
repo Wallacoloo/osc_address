@@ -4,9 +4,10 @@ version = "0.1.0"
 authors = ["Colin Wallace <wallacoloo@gmail.com>"]
 
 [dependencies]
-syn = "0.11"
-quote = "0.3"
 osc_address = { version = "0.2.0", path = "../osc_address" }
+quote = "0.3"
+serde = "1.0"
+syn = "0.11"
 
 [lib]
 proc-macro = true

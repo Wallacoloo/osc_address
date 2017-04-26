@@ -4,4 +4,4 @@ version = "0.2.0"
 authors = ["Colin Wallace <wallacoloo@gmail.com>"]
 
 [dependencies]
-
+serde = "1.0"

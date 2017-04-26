@@ -6,13 +6,13 @@ use osc_address::OscAddress;
 #[derive(OscAddress)]
 enum MyStruct {
     #[osc_address(address="first")]
-    First,
+    First((), ()),
     #[osc_address(address="second")]
-    Second,
+    Second((), ()),
 }
 
 #[test]
 fn it_works2() {
-    assert_eq!(MyStruct::First.get_address(), "first");
+    assert_eq!(MyStruct::First((), ()).get_address(), "first");
 }
 
