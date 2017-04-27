@@ -32,6 +32,7 @@ enum OscBranchFmt {
 }
 
 #[derive(Debug)]
+#[derive(PartialEq)]
 enum PathArgsType {
     /// No path arguments (aka 'unit', ())
     Unit,
@@ -77,13 +78,19 @@ fn impl_osc_address(ast: &MacroInput) -> quote::Tokens {
                 let variant_ident = variant.ident.clone();
                 let variant_props = get_variant_props(variant);
                 let address_push_impl = match variant_props.address {
+                    // This component of the address is a string constant;
+                    // push the string to the address being built.
                     OscBranchFmt::Str(variant_address) => {
                         let variant_address = "/".to_string() + &variant_address;
                         quote!{
                             address.push_str(#variant_address);
                         }
                     },
-                    OscBranchFmt::None => unimplemented!(),
+                    // This component of the address is a variable;
+                    // write that variable to the address being built.
+                    OscBranchFmt::None => quote! {
+                        address.push_str(&format!("/{}", path_arg));
+                    },
                 };
                 let recurse_build_impl = match variant_props.msg_args_type {
                     // Payload IS the message data; not a nested OscAddress
@@ -95,7 +102,7 @@ fn impl_osc_address(ast: &MacroInput) -> quote::Tokens {
                 // Create the variant match case that pushes the component name
                 // and then builds the remainder of the address.
                 quote! {
-                    #typename::#variant_ident(ref _path_args, ref msg_data) => {
+                    #typename::#variant_ident(ref path_arg, ref msg_data) => {
                         #address_push_impl
                         #recurse_build_impl
                     },
@@ -227,10 +234,20 @@ fn get_variant_props(variant: &syn::Variant) -> OscRouteProperties {
         },
         _ => panic!("Expected OscAddress enum variant to be a tuple. Got: {:?}", variant.data),
     };
-    if addresses.len() != 1 {
-        panic!("Expected exactly 1 #[osc_address(address=...)] for each enum variant. Saw: {:?}", addresses);
+    // Decode the address
+    let address = if addresses.len() > 1 {
+        panic!("Expected no more than one #[osc_address(address=...)] for each enum variant. Saw: {:?}", addresses);
+    } else if addresses.len() == 1 {
+        addresses.into_iter().next().unwrap()
+    } else {
+        OscBranchFmt::None
+    };
+    // Verify illegal attribute combinations
+    if let OscBranchFmt::Str(_) = address {
+        if path_args_type != PathArgsType::Unit {
+            panic!("A #[osc_address(address=\"<literal>\")] directive implies no path arguments, but both were found");
+        }
     }
-    let address = addresses.into_iter().next().unwrap();
     OscRouteProperties{ address, path_args_type, msg_args_type }
 }
 
