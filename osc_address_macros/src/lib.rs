@@ -47,7 +47,7 @@ pub fn derive_osc_address(input: TokenStream) -> TokenStream {
 
     // Return the generated impl as a TokenStream
     let ts = expanded.parse().unwrap();
-    println!("{}", ts);
+    //println!("{}", ts);
     ts
 }
 
@@ -69,13 +69,13 @@ fn impl_osc_address(ast: &MacroInput) -> quote::Tokens {
                 match variant_props.var_type {
                     // Payload IS the message data; not a nested OscAddress
                     VariantType::SeqSeq => quote! {
-                        #typename::#variant_ident(_path_args, _msg_data) => {
+                        #typename::#variant_ident(ref _path_args, ref _msg_data) => {
                             address.push_str(#variant_address);
                         }
                     },
                     // Payload is a nested OscAddress
                     VariantType::SeqStruct => quote! {
-                        #typename::#variant_ident(_path_args, ref msg_data) => {
+                        #typename::#variant_ident(ref _path_args, ref msg_data) => {
                             address.push_str(#variant_address);
                             OscAddress::build_address(msg_data, address);
                         }
@@ -105,13 +105,13 @@ fn impl_osc_address(ast: &MacroInput) -> quote::Tokens {
                 match variant_props.var_type {
                     // Payload IS the message data; not a nested OscAddress
                     VariantType::SeqSeq => quote! {
-                        #typename::#variant_ident(_path_args, ref msg_data) => {
+                        #typename::#variant_ident(ref _path_args, ref msg_data) => {
                             serde::ser::SerializeTuple::serialize_element(serializer, msg_data)
                         }
                     },
                     // Payload is a nested OscAddress
                     VariantType::SeqStruct => quote! {
-                        #typename::#variant_ident(_path_args, ref msg_data) => {
+                        #typename::#variant_ident(ref _path_args, ref msg_data) => {
                             OscAddress::serialize_body(msg_data, serializer)
                         }
                     },
@@ -144,7 +144,7 @@ fn impl_osc_address(ast: &MacroInput) -> quote::Tokens {
                     let mut tup = serializer.serialize_tuple(2)?;
                     serde::ser::SerializeTuple::serialize_element(&mut tup, &OscAddress::get_address(self))?;
                     // Now serialize the message payload
-                    //OscAddress::serialize_body(self, &mut tup)?;
+                    OscAddress::serialize_body(self, &mut tup)?;
                     serde::ser::SerializeTuple::end(tup)
                 }
             }
