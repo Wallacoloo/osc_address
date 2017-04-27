@@ -1,3 +1,4 @@
+// quote/syn crates require high macro expandion recursion limits
 #![recursion_limit="128"]
 #![feature(conservative_impl_trait)]
 extern crate osc_address;
@@ -14,7 +15,8 @@ use syn::{MacroInput, MetaItem, NestedMetaItem, Ty};
 #[derive(Debug)]
 struct OscRouteProperties {
     address: OscBranchFmt,
-    var_type: VariantType,
+    path_args_type: PathArgsType,
+    msg_args_type: MsgArgsType,
 }
 
 /// Describes how to format the portion of the OSC address between adjacent
@@ -24,17 +26,27 @@ enum OscBranchFmt {
     /// This branch of the OSC address is a literal string,
     /// e.g. "world" in "/hello/world"
     Str(String),
+    ///// No format string was provided. Presumably there is a path argument
+    ///// and it implements FromStr/ToString.
+    //None,
 }
 
-/// In general, each enum variant of the OscAddress type holds both path arguments and data
-/// arguments. But the data arguments might be parsed into another OscAddress sub-type.
 #[derive(Debug)]
-enum VariantType {
-    /// SubPath((path_args), (data_args))
+enum PathArgsType {
+    /// No path arguments (aka 'unit', ())
+    Unit,
+    /// There is a path argument.
+    One,
+}
+
+#[derive(Debug)]
+enum MsgArgsType {
+    /// SubPath(<path_args>, (data_args))
     /// Also encompasses units as 0-length tuples.
-    SeqSeq,
-    /// SubPath((path_args), SubType)
-    SeqStruct,
+    Seq,
+    /// SubPath(<path_args>, SubType)
+    /// Presumably the SubType also implements OscAddress.
+    Struct,
 }
 
 #[proc_macro_derive(OscAddress, attributes(osc_address))]
@@ -66,15 +78,15 @@ fn impl_osc_address(ast: &MacroInput) -> quote::Tokens {
                 let variant_props = get_variant_props(variant);
                 let OscBranchFmt::Str(variant_address) = variant_props.address;
                 let variant_address = "/".to_string() + &variant_address;
-                match variant_props.var_type {
+                match variant_props.msg_args_type {
                     // Payload IS the message data; not a nested OscAddress
-                    VariantType::SeqSeq => quote! {
+                    MsgArgsType::Seq => quote! {
                         #typename::#variant_ident(ref _path_args, ref _msg_data) => {
                             address.push_str(#variant_address);
                         }
                     },
                     // Payload is a nested OscAddress
-                    VariantType::SeqStruct => quote! {
+                    MsgArgsType::Struct => quote! {
                         #typename::#variant_ident(ref _path_args, ref msg_data) => {
                             address.push_str(#variant_address);
                             OscAddress::build_address(msg_data, address);
@@ -102,15 +114,15 @@ fn impl_osc_address(ast: &MacroInput) -> quote::Tokens {
             let arms = variants.iter().map(|variant| {
                 let variant_ident = variant.ident.clone();
                 let variant_props = get_variant_props(variant);
-                match variant_props.var_type {
+                match variant_props.msg_args_type {
                     // Payload IS the message data; not a nested OscAddress
-                    VariantType::SeqSeq => quote! {
+                    MsgArgsType::Seq => quote! {
                         #typename::#variant_ident(ref _path_args, ref msg_data) => {
                             serde::ser::SerializeTuple::serialize_element(serializer, msg_data)
                         }
                     },
                     // Payload is a nested OscAddress
-                    VariantType::SeqStruct => quote! {
+                    MsgArgsType::Struct => quote! {
                         #typename::#variant_ident(ref _path_args, ref msg_data) => {
                             OscAddress::serialize_body(msg_data, serializer)
                         }
@@ -190,16 +202,21 @@ fn get_variant_props(variant: &syn::Variant) -> OscRouteProperties {
             _ => panic!("Unsupported #[osc_address] directive: {:?}", item),
         }
     }
-    let var_type = match variant.data {
+    let (path_args_type, msg_args_type) = match variant.data {
         syn::VariantData::Tuple(ref fields) => {
             if fields.len() != 2 {
                 panic!("Expected OscAddress enum variant tuple to have exactly two entries: one for path arguments and one for the message payload. Got: {:?}", fields);
             }
-            match fields[1].ty {
+            let path_args_type = match fields[0].ty {
+                Ty::Tup(ref v) if v.len() == 0 => PathArgsType::Unit,
+                _ => PathArgsType::One,
+            };
+            let msg_args_type = match fields[1].ty {
                 // Is the message data a sequence type, or a nested OscAddress?
-                Ty::Slice(_) | Ty::Array(_, _) | Ty::Tup(_) => VariantType::SeqSeq,
-                _ => VariantType::SeqStruct,
-            }
+                Ty::Slice(_) | Ty::Array(_, _) | Ty::Tup(_) => MsgArgsType::Seq,
+                _ => MsgArgsType::Struct,
+            };
+            (path_args_type, msg_args_type)
         },
         _ => panic!("Expected OscAddress enum variant to be a tuple. Got: {:?}", variant.data),
     };
@@ -207,7 +224,7 @@ fn get_variant_props(variant: &syn::Variant) -> OscRouteProperties {
         panic!("Expected exactly 1 #[osc_address(address=...)] for each enum variant. Saw: {:?}", addresses);
     }
     let address = addresses.into_iter().next().unwrap();
-    OscRouteProperties{ address, var_type }
+    OscRouteProperties{ address, path_args_type, msg_args_type }
 }
 
 /// Return all NestedMetaItems corresponding to
