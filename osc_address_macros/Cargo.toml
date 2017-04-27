@@ -11,3 +11,6 @@ syn = "0.11"
 
 [lib]
 proc-macro = true
+
+[dev-dependencies]
+serde_derive = "1.0"

@@ -77,7 +77,7 @@ fn impl_osc_address(ast: &MacroInput) -> quote::Tokens {
                     VariantType::SeqStruct => quote! {
                         #typename::#variant_ident(_path_args, ref msg_data) => {
                             address.push_str(#variant_address);
-                            msg_data.build_address(address);
+                            OscAddress::build_address(msg_data, address);
                         }
                     },
                 }
@@ -89,17 +89,87 @@ fn impl_osc_address(ast: &MacroInput) -> quote::Tokens {
                 }
             }
         },
+        // #[derive(OscAddress)] on a Struct is used to treat that struct as a
+        // message payload; therefore it HAS no address.
         syn::Body::Struct(ref _variant_data) => {
             quote! { }
         }
     };
+    let (do_impl_serde, serialize_body_impl) = match ast.body {
+        syn::Body::Enum(ref variants) => (true, {
+            // variants encodes the name, tuple data, and any #[osc_address(...)]
+            // attrs applied to each variant of the enum
+            let arms = variants.iter().map(|variant| {
+                let variant_ident = variant.ident.clone();
+                let variant_props = get_variant_props(variant);
+                match variant_props.var_type {
+                    // Payload IS the message data; not a nested OscAddress
+                    VariantType::SeqSeq => quote! {
+                        #typename::#variant_ident(_path_args, ref msg_data) => {
+                            serde::ser::SerializeTuple::serialize_element(serializer, msg_data)
+                        }
+                    },
+                    // Payload is a nested OscAddress
+                    VariantType::SeqStruct => quote! {
+                        #typename::#variant_ident(_path_args, ref msg_data) => {
+                            OscAddress::serialize_body(msg_data, serializer)
+                        }
+                    },
+                }
+            });
 
-    quote! {
-        impl OscAddress for #typename {
-            fn build_address(&self, address: &mut String) {
-                #build_address_impl
+            quote! {
+                match *self {
+                    #(#arms)*
+                }
+            }
+        }),
+        // #[derive(OscAddress)] on a Struct is used to treat that struct as a
+        // message payload; therefore, the user should implemente serde::Serialize
+        // on their own (perhaps with #[derive(Serialize)]), and we relay to that
+        syn::Body::Struct(ref _variant_data) => (false, quote! {
+            serde::ser::SerializeTuple::serialize_element(serializer, self)
+        })
+    };
+
+    let serialize_impl = if do_impl_serde {
+        quote! {
+            impl serde::Serialize for #typename {
+                fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                    // serialization is a two-step process.
+                    // 1: Serialize the message address.
+                    // 2: Serialize the ACTUAL message payload; we may have to
+                    //    recurse through multiple OscAddress instances to
+                    //    locate the leaf payload.
+                    let mut tup = serializer.serialize_tuple(2)?;
+                    serde::ser::SerializeTuple::serialize_element(&mut tup, &OscAddress::get_address(self))?;
+                    // Now serialize the message payload
+                    //OscAddress::serialize_body(self, &mut tup)?;
+                    serde::ser::SerializeTuple::end(tup)
+                }
             }
         }
+    } else {
+        quote! {}
+    };
+
+    let dummy_const = syn::Ident::new(format!("_IMPL_OSCADDRESS_FOR_{}", typename));
+    quote! {
+        // Effectively namespace the OscAddress macro implementations
+        // to prevent imports from polluting user's namespace
+        #[allow(non_upper_case_globals)]
+        const #dummy_const: () = {
+            extern crate serde;
+            impl OscAddress for #typename {
+                fn build_address(&self, address: &mut String) {
+                    #build_address_impl
+                }
+                fn serialize_body<S: serde::ser::SerializeTuple>(&self, serializer: &mut S) -> Result<(), S::Error> {
+                    #serialize_body_impl
+                }
+            }
+            #serialize_impl
+        };
     }
 }
 
