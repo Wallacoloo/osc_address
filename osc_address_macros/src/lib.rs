@@ -26,9 +26,9 @@ enum OscBranchFmt {
     /// This branch of the OSC address is a literal string,
     /// e.g. "world" in "/hello/world"
     Str(String),
-    ///// No format string was provided. Presumably there is a path argument
-    ///// and it implements FromStr/ToString.
-    //None,
+    /// No format string was provided. Presumably there is a path argument
+    /// and it implements FromStr/ToString.
+    None,
 }
 
 #[derive(Debug)]
@@ -76,21 +76,28 @@ fn impl_osc_address(ast: &MacroInput) -> quote::Tokens {
             let arms = variants.iter().map(|variant| {
                 let variant_ident = variant.ident.clone();
                 let variant_props = get_variant_props(variant);
-                let OscBranchFmt::Str(variant_address) = variant_props.address;
-                let variant_address = "/".to_string() + &variant_address;
-                match variant_props.msg_args_type {
-                    // Payload IS the message data; not a nested OscAddress
-                    MsgArgsType::Seq => quote! {
-                        #typename::#variant_ident(ref _path_args, ref _msg_data) => {
+                let address_push_impl = match variant_props.address {
+                    OscBranchFmt::Str(variant_address) => {
+                        let variant_address = "/".to_string() + &variant_address;
+                        quote!{
                             address.push_str(#variant_address);
                         }
                     },
-                    // Payload is a nested OscAddress
+                    OscBranchFmt::None => unimplemented!(),
+                };
+                let recurse_build_impl = match variant_props.msg_args_type {
+                    // Payload IS the message data; not a nested OscAddress
+                    MsgArgsType::Seq => quote! {},
                     MsgArgsType::Struct => quote! {
-                        #typename::#variant_ident(ref _path_args, ref msg_data) => {
-                            address.push_str(#variant_address);
-                            OscAddress::build_address(msg_data, address);
-                        }
+                        OscAddress::build_address(msg_data, address);
+                    },
+                };
+                // Create the variant match case that pushes the component name
+                // and then builds the remainder of the address.
+                quote! {
+                    #typename::#variant_ident(ref _path_args, ref msg_data) => {
+                        #address_push_impl
+                        #recurse_build_impl
                     },
                 }
             });
