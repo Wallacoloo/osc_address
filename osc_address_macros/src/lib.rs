@@ -158,6 +158,76 @@ fn impl_osc_address(ast: &MacroInput) -> quote::Tokens {
         })
     };
 
+    let deserialize_body_impl = match ast.body {
+        syn::Body::Enum(ref variants) => {
+            // create a series of:
+            // if address == "<variant_address>" {
+            //     return Ok(#typename::#variant_ident((), seq.next_element()?.unwrap()))
+            // }
+            // // ...
+            let arms = variants.iter().map(|variant| {
+                let variant_ident = variant.ident.clone();
+                let variant_props = get_variant_props(variant);
+                match variant_props.msg_args_type {
+                    // Payload IS the message data; not a nested OscAddress
+                    // By necessity this is the leaf message, so we we don't need
+                    // to split the component name off of the address.
+                    MsgArgsType::Seq => match variant_props.address {
+                        OscBranchFmt::Str(component_name) => quote! {
+                            if component_name == #component_name && downstream_address.is_empty() {
+                                return Ok(#typename::#variant_ident((), seq.next_element()?.unwrap()));
+                            }
+                        },
+                        OscBranchFmt::None => quote! {
+                            // if we can parse the path argument, then the address variant is matched
+                            if let Ok(path_arg) = component_name.parse() {
+                                return Ok(#typename::#variant_ident(path_arg, seq.next_element()?.unwrap()));
+                            }
+                        },
+                    },
+                    // Payload is a nested OscAddress
+                    MsgArgsType::Struct => match variant_props.address {
+                        OscBranchFmt::Str(component_name) => quote! {
+                            if component_name == #component_name {
+                                return Ok(#typename::#variant_ident((), OscAddress::deserialize_body(downstream_address, seq)?));
+                            }
+                        },
+                        OscBranchFmt::None => quote! {
+                            // if we can parse the path argument, then the address variant is matched
+                            if let Ok(path_arg) = component_name.parse() {
+                                return Ok(#typename::#variant_ident(path_arg, OscAddress::deserialize_body(downstream_address, seq)?));
+                            }
+                        },
+                    }
+                }
+            });
+            quote! {
+                // split the address at the next "/":
+                // start from idx=1 because the address begins with "/<component_name>/<downstream ...>"
+                let slash_idx = address[1..].find('/');
+                let downstream_address = match slash_idx {
+                    None => String::new(),
+                    Some(idx) => address.split_off(1+idx),
+                };
+                let component_name = &address[1..];
+                #(#arms)*
+                // If no patterns matched, then:
+                return Err(serde::de::Error::invalid_value(serde::de::Unexpected::Str(component_name), &"an OSC component name that matches one of the enum variants"));
+            }
+        },
+        syn::Body::Struct(ref _variant_data) => quote! {
+            if address != "" && address != "/" {
+                return Err(serde::de::Error::invalid_value(serde::de::Unexpected::Str(&address), &"the OSC path to be terminated by this point"));
+            }
+            let me = seq.next_element()?;
+            match me {
+                None => Err(serde::de::Error::invalid_length(1, &"a sequence representing an OSC message payload")),
+                Some(me) => Ok(me)
+            }
+        },
+    };
+
+
     let serialize_impl = if do_impl_serde {
         quote! {
             impl serde::Serialize for #typename {
@@ -179,6 +249,38 @@ fn impl_osc_address(ast: &MacroInput) -> quote::Tokens {
         quote! {}
     };
 
+    let deserialize_impl = if do_impl_serde {
+        quote! {
+            impl<'de> serde::Deserialize<'de> for #typename {
+                fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+                    where D: serde::Deserializer<'de>
+                {
+                    deserializer.deserialize_seq(ToplevelVisitor)
+                }
+            }
+            struct ToplevelVisitor;
+            impl<'de> serde::de::Visitor<'de> for ToplevelVisitor {
+                type Value = #typename;
+                fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                    formatter.write_str("a tuple of (String, (msg_args ...))")
+                }
+                fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+                    where A: serde::de::SeqAccess<'de>
+                {
+                    let address: Option<String> = seq.next_element()?;
+                    let address = match address {
+                        None => Err(serde::de::Error::invalid_length(0, &"an OSC address string, followed by a sequence of message arguments")),
+                        Some(addr) => Ok(addr),
+                    }?;
+                    #typename::deserialize_body(address, seq)
+                }
+            }
+        }
+    } else {
+        quote! {}
+    };
+
+
     let dummy_const = syn::Ident::new(format!("_IMPL_OSCADDRESS_FOR_{}", typename));
     quote! {
         // Effectively namespace the OscAddress macro implementations
@@ -186,15 +288,19 @@ fn impl_osc_address(ast: &MacroInput) -> quote::Tokens {
         #[allow(non_upper_case_globals)]
         const #dummy_const: () = {
             extern crate serde;
-            impl OscAddress for #typename {
+            impl<'de> OscAddress<'de> for #typename {
                 fn build_address(&self, address: &mut String) {
                     #build_address_impl
                 }
                 fn serialize_body<S: serde::ser::SerializeTuple>(&self, serializer: &mut S) -> Result<(), S::Error> {
                     #serialize_body_impl
                 }
+                fn deserialize_body<D: serde::de::SeqAccess<'de>>(mut address: String, mut seq: D) -> Result<#typename, D::Error> {
+                    #deserialize_body_impl
+                }
             }
             #serialize_impl
+            #deserialize_impl
         };
     }
 }

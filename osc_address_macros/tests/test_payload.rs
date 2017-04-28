@@ -15,7 +15,7 @@ enum MsgLeaf  {
 }
 
 #[derive(OscAddress)]
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 struct MsgData {
     v: i32,
     s: String,
