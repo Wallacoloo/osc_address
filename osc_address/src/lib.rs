@@ -1,6 +1,6 @@
 extern crate serde;
 
-pub trait OscAddress<'de> : serde::Serialize + serde::Deserialize<'de> {
+pub trait OscMessage<'de> : serde::Serialize + serde::Deserialize<'de> {
     fn build_address(&self, string: &mut String);
     fn get_address(&self) -> String {
         let mut s = String::new();

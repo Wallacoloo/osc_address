@@ -4,9 +4,9 @@ extern crate serde_derive;
 extern crate osc_address_macros;
 extern crate osc_address;
 extern crate serde_osc;
-use osc_address::OscAddress;
+use osc_address::OscMessage;
 
-#[derive(OscAddress)]
+#[derive(OscMessage)]
 enum MsgLeaf  {
     #[osc_address(address="first")]
     First((), MsgData),
@@ -14,7 +14,7 @@ enum MsgLeaf  {
     Second((), (i32, f32)),
 }
 
-#[derive(OscAddress)]
+#[derive(OscMessage)]
 #[derive(Serialize, Deserialize)]
 struct MsgData {
     v: i32,

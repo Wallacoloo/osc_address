@@ -2,9 +2,9 @@
 extern crate osc_address_macros;
 extern crate osc_address;
 extern crate serde_osc;
-use osc_address::OscAddress;
+use osc_address::OscMessage;
 
-#[derive(OscAddress)]
+#[derive(OscMessage)]
 enum MyStruct {
     #[osc_address(address="first")]
     First((), ()),

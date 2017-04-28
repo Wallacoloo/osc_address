@@ -1,9 +1,9 @@
 extern crate osc_address;
 #[macro_use]
 extern crate osc_address_macros;
-use osc_address::OscAddress;
+use osc_address::OscMessage;
 
-#[derive(OscAddress)]
+#[derive(OscMessage)]
 enum MsgLeaf {
     #[osc_address(address="first")]
     First((), ()),
@@ -11,7 +11,7 @@ enum MsgLeaf {
     Second((), (i32, f32)),
 }
 
-#[derive(OscAddress)]
+#[derive(OscMessage)]
 enum MsgRoot {
     #[osc_address(address="left")]
     Left((), MsgLeaf),

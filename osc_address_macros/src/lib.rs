@@ -46,11 +46,11 @@ enum MsgArgsType {
     /// Also encompasses units as 0-length tuples.
     Seq,
     /// SubPath(<path_args>, SubType)
-    /// Presumably the SubType also implements OscAddress.
+    /// Presumably the SubType also implements OscMessage.
     Struct,
 }
 
-#[proc_macro_derive(OscAddress, attributes(osc_address))]
+#[proc_macro_derive(OscMessage, attributes(osc_address))]
 pub fn derive_osc_address(input: TokenStream) -> TokenStream {
     // Parse the string representation into a syntax tree
     let ast = syn::parse_derive_input(&input.to_string()).unwrap();
@@ -66,9 +66,9 @@ pub fn derive_osc_address(input: TokenStream) -> TokenStream {
 
 fn impl_osc_address(ast: &MacroInput) -> quote::Tokens {
     let typename = &ast.ident;
-    // match the element the #[derive(OscAddress)] statement is applied to,
+    // match the element the #[derive(OscMessage)] statement is applied to,
     // e.g. "enum { ... }" in
-    // #[derive(OscAddress)]
+    // #[derive(OscMessage)]
     // enum MyEnum { X, Y, Z(u3) }
     let build_address_impl = match ast.body {
         syn::Body::Enum(ref variants) => {
@@ -93,10 +93,10 @@ fn impl_osc_address(ast: &MacroInput) -> quote::Tokens {
                     },
                 };
                 let recurse_build_impl = match variant_props.msg_args_type {
-                    // Payload IS the message data; not a nested OscAddress
+                    // Payload IS the message data; not a nested OscMessage
                     MsgArgsType::Seq => quote! {},
                     MsgArgsType::Struct => quote! {
-                        OscAddress::build_address(msg_data, address);
+                        OscMessage::build_address(msg_data, address);
                     },
                 };
                 // Create the variant match case that pushes the component name
@@ -115,7 +115,7 @@ fn impl_osc_address(ast: &MacroInput) -> quote::Tokens {
                 }
             }
         },
-        // #[derive(OscAddress)] on a Struct is used to treat that struct as a
+        // #[derive(OscMessage)] on a Struct is used to treat that struct as a
         // message payload; therefore it HAS no address.
         syn::Body::Struct(ref _variant_data) => {
             quote! { }
@@ -129,16 +129,16 @@ fn impl_osc_address(ast: &MacroInput) -> quote::Tokens {
                 let variant_ident = variant.ident.clone();
                 let variant_props = get_variant_props(variant);
                 match variant_props.msg_args_type {
-                    // Payload IS the message data; not a nested OscAddress
+                    // Payload IS the message data; not a nested OscMessage
                     MsgArgsType::Seq => quote! {
                         #typename::#variant_ident(ref _path_args, ref msg_data) => {
                             serde::ser::SerializeTuple::serialize_element(serializer, msg_data)
                         }
                     },
-                    // Payload is a nested OscAddress
+                    // Payload is a nested OscMessage
                     MsgArgsType::Struct => quote! {
                         #typename::#variant_ident(ref _path_args, ref msg_data) => {
-                            OscAddress::serialize_body(msg_data, serializer)
+                            OscMessage::serialize_body(msg_data, serializer)
                         }
                     },
                 }
@@ -150,7 +150,7 @@ fn impl_osc_address(ast: &MacroInput) -> quote::Tokens {
                 }
             }
         }),
-        // #[derive(OscAddress)] on a Struct is used to treat that struct as a
+        // #[derive(OscMessage)] on a Struct is used to treat that struct as a
         // message payload; therefore, the user should implemente serde::Serialize
         // on their own (perhaps with #[derive(Serialize)]), and we relay to that
         syn::Body::Struct(ref _variant_data) => (false, quote! {
@@ -169,7 +169,7 @@ fn impl_osc_address(ast: &MacroInput) -> quote::Tokens {
                 let variant_ident = variant.ident.clone();
                 let variant_props = get_variant_props(variant);
                 match variant_props.msg_args_type {
-                    // Payload IS the message data; not a nested OscAddress
+                    // Payload IS the message data; not a nested OscMessage
                     // By necessity this is the leaf message, so we we don't need
                     // to split the component name off of the address.
                     MsgArgsType::Seq => match variant_props.address {
@@ -185,17 +185,17 @@ fn impl_osc_address(ast: &MacroInput) -> quote::Tokens {
                             }
                         },
                     },
-                    // Payload is a nested OscAddress
+                    // Payload is a nested OscMessage
                     MsgArgsType::Struct => match variant_props.address {
                         OscBranchFmt::Str(component_name) => quote! {
                             if component_name == #component_name {
-                                return Ok(#typename::#variant_ident((), OscAddress::deserialize_body(downstream_address, seq)?));
+                                return Ok(#typename::#variant_ident((), OscMessage::deserialize_body(downstream_address, seq)?));
                             }
                         },
                         OscBranchFmt::None => quote! {
                             // if we can parse the path argument, then the address variant is matched
                             if let Ok(path_arg) = component_name.parse() {
-                                return Ok(#typename::#variant_ident(path_arg, OscAddress::deserialize_body(downstream_address, seq)?));
+                                return Ok(#typename::#variant_ident(path_arg, OscMessage::deserialize_body(downstream_address, seq)?));
                             }
                         },
                     }
@@ -235,12 +235,12 @@ fn impl_osc_address(ast: &MacroInput) -> quote::Tokens {
                     // serialization is a two-step process.
                     // 1: Serialize the message address.
                     // 2: Serialize the ACTUAL message payload; we may have to
-                    //    recurse through multiple OscAddress instances to
+                    //    recurse through multiple OscMessage instances to
                     //    locate the leaf payload.
                     let mut tup = serializer.serialize_tuple(2)?;
-                    serde::ser::SerializeTuple::serialize_element(&mut tup, &OscAddress::get_address(self))?;
+                    serde::ser::SerializeTuple::serialize_element(&mut tup, &OscMessage::get_address(self))?;
                     // Now serialize the message payload
-                    OscAddress::serialize_body(self, &mut tup)?;
+                    OscMessage::serialize_body(self, &mut tup)?;
                     serde::ser::SerializeTuple::end(tup)
                 }
             }
@@ -283,12 +283,12 @@ fn impl_osc_address(ast: &MacroInput) -> quote::Tokens {
 
     let dummy_const = syn::Ident::new(format!("_IMPL_OSCADDRESS_FOR_{}", typename));
     quote! {
-        // Effectively namespace the OscAddress macro implementations
+        // Effectively namespace the OscMessage macro implementations
         // to prevent imports from polluting user's namespace
         #[allow(non_upper_case_globals)]
         const #dummy_const: () = {
             extern crate serde;
-            impl<'de> OscAddress<'de> for #typename {
+            impl<'de> OscMessage<'de> for #typename {
                 fn build_address(&self, address: &mut String) {
                     #build_address_impl
                 }
@@ -325,20 +325,20 @@ fn get_variant_props(variant: &syn::Variant) -> OscRouteProperties {
     let (path_args_type, msg_args_type) = match variant.data {
         syn::VariantData::Tuple(ref fields) => {
             if fields.len() != 2 {
-                panic!("Expected OscAddress enum variant tuple to have exactly two entries: one for path arguments and one for the message payload. Got: {:?}", fields);
+                panic!("Expected OscMessage enum variant tuple to have exactly two entries: one for path arguments and one for the message payload. Got: {:?}", fields);
             }
             let path_args_type = match fields[0].ty {
                 Ty::Tup(ref v) if v.len() == 0 => PathArgsType::Unit,
                 _ => PathArgsType::One,
             };
             let msg_args_type = match fields[1].ty {
-                // Is the message data a sequence type, or a nested OscAddress?
+                // Is the message data a sequence type, or a nested OscMessage?
                 Ty::Slice(_) | Ty::Array(_, _) | Ty::Tup(_) => MsgArgsType::Seq,
                 _ => MsgArgsType::Struct,
             };
             (path_args_type, msg_args_type)
         },
-        _ => panic!("Expected OscAddress enum variant to be a tuple. Got: {:?}", variant.data),
+        _ => panic!("Expected OscMessage enum variant to be a tuple. Got: {:?}", variant.data),
     };
     // Decode the address
     let address = if addresses.len() > 1 {
