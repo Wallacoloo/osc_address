@@ -1,5 +1,6 @@
 [package]
 name = "osc_address"
+description = "Typesafe routing of Open Sound Control message and abstraction over serde_osc"
 version = "0.2.0"
 authors = ["Colin Wallace <wallacoloo@gmail.com>"]
 
