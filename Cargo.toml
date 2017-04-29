@@ -1,0 +1,6 @@
+[workspace]
+members = [
+	"osc_address",
+	"osc_address_derive",
+]
+

@@ -1,3 +1,7 @@
+//! This crate implements #[derive(OscMessage)] for the `osc_address` crate.
+//! For usage, please refer to the `tests/` directory.
+
+
 // quote/syn crates require high macro expandion recursion limits
 #![recursion_limit="128"]
 #![feature(conservative_impl_trait)]
