@@ -138,13 +138,13 @@ fn impl_osc_address(ast: &MacroInput) -> quote::Tokens {
                 match variant_props.msg_args_type {
                     // Payload IS the message data; not a nested OscMessage
                     MsgArgsType::Seq => quote! {
-                        #typename::#variant_ident(ref _path_args, ref msg_data) => {
+                        #typename::#variant_ident(ref _path_arg, ref msg_data) => {
                             serde::ser::SerializeTuple::serialize_element(serializer, msg_data)
                         }
                     },
                     // Payload is a nested OscMessage
                     MsgArgsType::Struct => quote! {
-                        #typename::#variant_ident(ref _path_args, ref msg_data) => {
+                        #typename::#variant_ident(ref _path_arg, ref msg_data) => {
                             osc_address::OscMessage::serialize_body(msg_data, serializer)
                         }
                     },
@@ -298,12 +298,15 @@ fn impl_osc_address(ast: &MacroInput) -> quote::Tokens {
             extern crate osc_address;
             use std;
             impl<'de> osc_address::OscMessage<'de> for #typename {
+                // not all branches will use path_arg or msg_data vars decoded in the enum cases.
+                #[allow(unused_mut, unused_variables)]
                 fn build_address(&self, address: &mut String) {
                     #build_address_impl
                 }
                 fn serialize_body<S: serde::ser::SerializeTuple>(&self, serializer: &mut S) -> Result<(), S::Error> {
                     #serialize_body_impl
                 }
+                #[allow(unused_mut)]
                 fn deserialize_body<D: serde::de::SeqAccess<'de>>(mut address: String, mut seq: D) -> Result<#typename, D::Error> {
                     #deserialize_body_impl
                 }
