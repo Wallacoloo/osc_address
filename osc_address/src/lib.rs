@@ -1,3 +1,20 @@
+//! This crate defines some utilities for dealing with [Open Sound Control] (OSC)
+//! messages. It is intended to be paired with `osc_address_macros` and provides
+//! a layer of abstraction above [serde_osc],
+//! but usage of either is optional and serialization/deserialization works
+//! with any serde backend.
+//!
+//! The primary feature of this crate is its `OscMessage` trait, which provides
+//! a **type-safe** way of encoding an OSC address and its payload while
+//! serializing/deserializating as if it were a generic
+//! `(osc_address: String, msg_payload: (...))` type suitable for [serde_osc].
+//!
+//! The `OscMessage` trait is intended to be implemented automatically via a
+//! `#[derive(OscMessage)]` directive.
+//! Refer to the `osc_address_macros` crate for how to do this.
+//!
+//! [serde_osc]: https://crates.io/crates/serde_osc
+//! [Open Sound Control]: http://opensoundcontrol.org/spec-1_0
 #![feature(try_from)]
 
 #[macro_use]
@@ -29,10 +46,10 @@ pub trait OscMessage<'m> : serde::Serialize + serde::Deserialize<'m> {
     }
     /// Serialize the payload of this message, and not its address.
     /// In the case that the variants of this message are also enumerated OscMessages,
-    /// this method will recurse and serialize the final (i.e. leaf) message payload.
+    /// this method should recurse and serialize the final (i.e. leaf) message payload.
     fn serialize_body<S: serde::ser::SerializeTuple>(&self, serializer: &mut S) -> Result<(), S::Error>;
     /// If `seq` represents the payload of an OSC message (i.e. the argument list),
-    /// then this will deserialize the address + data into the appropriate enum
+    /// then this method deserializes the address + data into the appropriate enum
     /// variant.
     ///
     /// In the case that Self is a struct and represents the payload of a message
@@ -129,6 +146,9 @@ impl AbsOscTime {
         };
         let ntp_secs = unix_secs.checked_add(DELTA_1970_1900);
         ntp_secs.map(|ntp_secs| {
+            // NOTE: will never overflow; casting u32 to u64 and multiplying by 2**32 is safe;
+            // Duration::subsec_nanos() is guaranteed to be < 10^9, so dividing the result
+            // by 10^9 gives a value < 2**32 .'. casting to u32 is safe.
             let frac = ((since_epoch.subsec_nanos() as u64) << 32) / 1000000000;
             Self::new(ntp_secs, frac as u32)
         })
