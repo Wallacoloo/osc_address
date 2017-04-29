@@ -1,7 +1,7 @@
 [package]
 description = "Macros 1.1 implementation of #[derive(OscAddress)] from the osc_address crate"
 name = "osc_address_derive"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Colin Wallace <wallacoloo@gmail.com>"]
 
 repository = "https://github.com/Wallacoloo/osc_address"
