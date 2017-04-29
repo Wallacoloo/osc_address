@@ -103,7 +103,7 @@ fn impl_osc_address(ast: &MacroInput) -> quote::Tokens {
                     // Payload IS the message data; not a nested OscMessage
                     MsgArgsType::Seq => quote! {},
                     MsgArgsType::Struct => quote! {
-                        OscMessage::build_address(msg_data, address);
+                        osc_address::OscMessage::build_address(msg_data, address);
                     },
                 };
                 // Create the variant match case that pushes the component name
@@ -145,7 +145,7 @@ fn impl_osc_address(ast: &MacroInput) -> quote::Tokens {
                     // Payload is a nested OscMessage
                     MsgArgsType::Struct => quote! {
                         #typename::#variant_ident(ref _path_args, ref msg_data) => {
-                            OscMessage::serialize_body(msg_data, serializer)
+                            osc_address::OscMessage::serialize_body(msg_data, serializer)
                         }
                     },
                 }
@@ -196,13 +196,13 @@ fn impl_osc_address(ast: &MacroInput) -> quote::Tokens {
                     MsgArgsType::Struct => match variant_props.address {
                         OscBranchFmt::Str(component_name) => quote! {
                             if component_name == #component_name {
-                                return Ok(#typename::#variant_ident((), OscMessage::deserialize_body(downstream_address, seq)?));
+                                return Ok(#typename::#variant_ident((), osc_address::OscMessage::deserialize_body(downstream_address, seq)?));
                             }
                         },
                         OscBranchFmt::None => quote! {
                             // if we can parse the path argument, then the address variant is matched
                             if let Ok(path_arg) = component_name.parse() {
-                                return Ok(#typename::#variant_ident(path_arg, OscMessage::deserialize_body(downstream_address, seq)?));
+                                return Ok(#typename::#variant_ident(path_arg, osc_address::OscMessage::deserialize_body(downstream_address, seq)?));
                             }
                         },
                     }
@@ -245,9 +245,9 @@ fn impl_osc_address(ast: &MacroInput) -> quote::Tokens {
                     //    recurse through multiple OscMessage instances to
                     //    locate the leaf payload.
                     let mut tup = serializer.serialize_tuple(2)?;
-                    serde::ser::SerializeTuple::serialize_element(&mut tup, &OscMessage::get_address(self))?;
+                    serde::ser::SerializeTuple::serialize_element(&mut tup, &osc_address::OscMessage::get_address(self))?;
                     // Now serialize the message payload
-                    OscMessage::serialize_body(self, &mut tup)?;
+                    osc_address::OscMessage::serialize_body(self, &mut tup)?;
                     serde::ser::SerializeTuple::end(tup)
                 }
             }
@@ -295,7 +295,9 @@ fn impl_osc_address(ast: &MacroInput) -> quote::Tokens {
         #[allow(non_upper_case_globals)]
         const #dummy_const: () = {
             extern crate serde;
-            impl<'de> OscMessage<'de> for #typename {
+            extern crate osc_address;
+            use std;
+            impl<'de> osc_address::OscMessage<'de> for #typename {
                 fn build_address(&self, address: &mut String) {
                     #build_address_impl
                 }
