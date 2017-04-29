@@ -1,5 +1,9 @@
-//! This crate implements #[derive(OscMessage)] for the `osc_address` crate.
-//! For usage, please refer to the `tests/` directory.
+//! This crate implements #[derive(OscMessage)] for the [osc_address] crate.
+//! For usage of `#[derive(OscMessage)]`, please refer to the `tests/` directory.
+//! For general usage of the `OscMessage` trait, refer to the osc_address
+//! [documentation](https://docs.rs/osc_address).
+//! 
+//! [osc_address]: https://github.com/Wallacoloo/osc_address
 
 
 // quote/syn crates require high macro expandion recursion limits
