@@ -1,17 +1,17 @@
 [package]
-name = "osc_address_macros"
+name = "osc_address_derive"
 version = "0.1.0"
 authors = ["Colin Wallace <wallacoloo@gmail.com>"]
 
 [dependencies]
-osc_address = { version = "0.2.0", path = "../osc_address" }
 quote = "0.3"
-serde = "1.0"
 syn = "0.11"
 
 [lib]
 proc-macro = true
 
 [dev-dependencies]
+osc_address = { version = "0.2.0", path = "../osc_address" }
+serde = "1.0"
 serde_derive = "1.0"
 serde_osc = "0.4.1"

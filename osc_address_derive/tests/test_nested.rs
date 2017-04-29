@@ -1,6 +1,6 @@
 extern crate osc_address;
 #[macro_use]
-extern crate osc_address_macros;
+extern crate osc_address_derive;
 use osc_address::OscMessage;
 
 #[derive(OscMessage)]

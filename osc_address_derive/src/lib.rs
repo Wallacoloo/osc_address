@@ -1,7 +1,6 @@
 // quote/syn crates require high macro expandion recursion limits
 #![recursion_limit="128"]
 #![feature(conservative_impl_trait)]
-extern crate osc_address;
 extern crate proc_macro;
 #[macro_use]
 extern crate quote;
