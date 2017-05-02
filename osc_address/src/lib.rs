@@ -1,20 +1,24 @@
-//! This crate defines some utilities for dealing with [Open Sound Control] (OSC)
-//! messages. It is intended to be paired with `osc_address_macros` and provides
-//! a layer of abstraction above [serde_osc],
+//! This crate defines some utilities for dealing with [Open Sound Control] \(OSC\)
+//! messages. It is intended to be paired with [osc_address_derive] and provides
+//! a layer of abstraction over [serde_osc],
 //! but usage of either is optional and serialization/deserialization works
 //! with any serde backend.
 //!
-//! The primary feature of this crate is its `OscMessage` trait, which provides
+//! The primary feature of this crate is its [`OscMessage`] trait, which provides
 //! a **type-safe** way of encoding an OSC address and its payload while
 //! serializing/deserializating as if it were a generic
 //! `(osc_address: String, msg_payload: (...))` type suitable for [serde_osc].
 //!
 //! The `OscMessage` trait is intended to be implemented automatically via a
-//! `#[derive(OscMessage)]` directive.
-//! Refer to the `osc_address_macros` crate for how to do this.
+//! `#[derive(OscMessage)]` directive, by use of [osc_address_derive]. Because
+//! of this, that crate hosts usage examples, whereas this crate hosts only the
+//! API documentation.
+//! 
 //!
-//! [serde_osc]: https://crates.io/crates/serde_osc
 //! [Open Sound Control]: http://opensoundcontrol.org/spec-1_0
+//! [osc_address_derive]: https://crates.io/crates/osc_address_derive
+//! [serde_osc]: https://crates.io/crates/serde_osc
+//! [`OscMessage`]: trait.OscMessage.html
 #![feature(try_from)]
 
 #[macro_use]
@@ -30,6 +34,12 @@ use std::time::{UNIX_EPOCH, Duration, SystemTime};
 /// Leap seconds do not need to be considered, as they were introduced in 1972.
 const DELTA_1970_1900: u32 = (70*365 + 17)*86400;
 
+/// Type that exposes an OSC address and a message payload. Can be deserialized
+/// and serialized as if it were a `(String, ([payload_arguments, ...]))` sequence.
+/// 
+/// The functions exposed by this trait can generally be ignored by the
+/// programmer. They primarily facilitate implementing Serde
+/// serialization/deserialization in an ergonomic fashion.
 pub trait OscMessage<'m> : serde::Serialize + serde::Deserialize<'m> {
     /// Append the address that this message would be sent to into the given string.
     /// This is intended to be used as a builder method called by `get_address`.
@@ -57,6 +67,9 @@ pub trait OscMessage<'m> : serde::Serialize + serde::Deserialize<'m> {
     fn deserialize_body<D: serde::de::SeqAccess<'m>>(address: String, seq: D) -> Result<Self, D::Error>;
 }
 
+/// An OSC bundle consists of 0 or more OSC packets that are to be handled
+/// atomically. Each packet is itself a message or another bundle. The bundle
+/// also contains a time tag indicating when it should be handled.
 #[derive(Serialize, Deserialize)]
 pub struct OscBundle<M> {
     time_tag: (u32, u32),
@@ -72,6 +85,7 @@ pub enum OscPacket<M> {
     Bundle(OscBundle<M>),
 }
 
+/// Time tag assigned to each [`OscBundle`](struct.OscBundle.html).
 #[derive(Copy, Clone)]
 pub enum OscTime {
     /// Indication to execute the bundle contents immediately upon receipt.
@@ -88,9 +102,11 @@ pub struct AbsOscTime {
 }
 
 impl<M> OscBundle<M> {
+    /// Return the time at which this OSC bundle should be handled.
     pub fn time_tag(&self) -> OscTime {
         OscTime::new(self.time_tag.0, self.time_tag.1)
     }
+    /// Access all messages contained in the bundle.
     pub fn messages(&self) -> &Vec<OscPacket<M>> {
         &self.messages
     }
@@ -98,7 +114,7 @@ impl<M> OscBundle<M> {
 
 impl OscTime {
     /// Create a OSC time from seconds and a fraction of a second.
-    /// In the special case that sec = 0 and frac = 1, this is to be interpreted
+    /// In the special case that `sec == 0` and `frac == 1`, this is to be interpreted
     /// as "now" or "immediately upon the time of message receipt."
     pub fn new(sec: u32, frac: u32) -> Self {
         match (sec, frac) {
@@ -111,7 +127,8 @@ impl OscTime {
     /// Note that this can fail to unrepresentable times, in which case None
     /// is returned.
     ///
-    /// See AbsOscTime::as_system_time for more details.
+    /// See [AbsOscTime::as_system_time] for more details.
+    /// [AbsOscTime::as_system_time]: struct.AbsOscTime.html#method.as_system_time
     pub fn as_system_time(&self) -> Option<SystemTime> {
         match *self {
             OscTime::At(ref abs_time) => abs_time.as_system_time(),
@@ -122,14 +139,14 @@ impl OscTime {
 
 impl AbsOscTime {
     /// Create a OSC time from seconds and a fraction of a second.
-    /// It is assumed that (sec, frac) != (0, 1) -- otherwise the time should
-    /// be represented as OscTime::Now.
+    /// It is assumed that `(sec, frac) != (0, 1)` -- otherwise the time should
+    /// be represented as `OscTime::Now`.
     pub fn new(sec: u32, frac: u32) -> Self {
         Self{ sec, frac }
     }
-    /// std::time::SystemTime -> AbsOscTime.
+    /// `std::time::SystemTime` -> `AbsOscTime`.
     /// Note that the OSC time can only represent dates out to year 2036,
-    /// but SystemTime allows greater range. Hence, this returns None if the
+    /// but `SystemTime` allows greater range. Hence, this returns `None` if the
     /// time is not representable.
     pub fn from_system_time(t: SystemTime) -> Option<Self> {
         let since_epoch = t.duration_since(UNIX_EPOCH);
@@ -153,19 +170,23 @@ impl AbsOscTime {
             Self::new(ntp_secs, frac as u32)
         })
     }
+    /// Number of seconds since Jan 1, 1900.
     pub fn sec(&self) -> u32 {
         self.sec
     }
+    /// Number of `1/2^32`th fractional seconds to be added with the `sec()` field.
+    /// e.g. `1000` represents `1000/2^32` seconds.
     pub fn frac(&self) -> u32 {
         self.frac
     }
+    /// The number of whole seconds and fractional seconds, as a tuple.
     pub fn sec_frac(&self) -> (u32, u32) {
         (self.sec, self.frac)
     }
-    /// Convert the OSC time tag into a type from the std::time library.
-    /// This may fail because std::time only allows times >= unix epoch (1970),
+    /// Convert the OSC time tag into a type from the `std::time` library.
+    /// This may fail because `std::time` only allows times >= unix epoch (1970),
     /// whereas OSC allows times >= 1900.
-    /// Upon such failure, 'None' is returned.
+    /// Upon such failure, `None` is returned.
     pub fn as_system_time(&self) -> Option<SystemTime> {
         // Converting ntp time to unix time, described here: http://stackoverflow.com/a/29138806/216292
         let secs_unix = self.sec().checked_sub(DELTA_1970_1900);

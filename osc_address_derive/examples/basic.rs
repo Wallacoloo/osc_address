@@ -70,7 +70,7 @@ fn dispatch(msg : OscToplevel) {
                 // handle messages to /renderer/<renderer_id>/say
                 OscRendererById::Say((), (say,)) => println!("id {} says: {}", renderer_id, say),
             },
-            // other cases omitted for clarity.
+            // other cases omitted for brevity.
             _ => {},
         }
     }

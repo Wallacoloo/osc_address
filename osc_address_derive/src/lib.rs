@@ -1,12 +1,13 @@
-//! This crate implements #[derive(OscMessage)] for the [osc_address] crate.
-//! For usage of `#[derive(OscMessage)]`, please refer to the `tests/` directory.
+//! This crate implements `#[derive(OscMessage)]` for the [osc_address] crate.
 //! For general usage of the `OscMessage` trait, refer to the osc_address
 //! [documentation](https://docs.rs/osc_address).
 //! 
 //! # Example
 //! 
 //! Here's an example of how this crate might be used alongside [osc_address]
-//! and [serde_osc] (for deserialization of OSC packets from [u8]).
+//! and [serde_osc] \(for deserialization of OSC packets from `[u8]`\).
+//! This example can be run by `cargo run --example basic`
+//! 
 //! ```
 //! #[macro_use]
 //! extern crate osc_address_derive;
@@ -80,12 +81,82 @@
 //!                 // handle messages to /renderer/<renderer_id>/say
 //!                 OscRendererById::Say((), (say,)) => println!("id {} says: {}", renderer_id, say),
 //!             },
-//!             // other cases omitted for clarity.
+//!             // other cases omitted for brevity.
 //!             _ => {},
 //!         }
 //!     }
 //! }
 //! ```
+//! 
+//! # Supported Struct/Enum Formats
+//! 
+//! The `#[derive(OscMessage)]` directive may be applied to either structs or enums.
+//! 
+//! When applying to an enum, each enum variant must have the form
+//! 
+//! ```notest
+//! VariantName(PathArgument, MsgPayload)
+//! ```
+//! 
+//! `PathArgument` may be any type that implements both `std::fmt::Display` and
+//! `std::str::FromStr`, e.g. `i32`, `f64`, `String`, etc.
+//! For example, `VariantName(u8, MsgPayload)` will match any OSC address beginning with
+//! "/xxx[/...]" where "xxx" is a valid `u8`. In the special case that `PathArgument=()`, the
+//! variant must be explicitly annotated with its address:
+//! 
+//! ```notest
+//! // This enum variant will match any address "/my_address[/...]".
+//! #[osc_address(address="my_address")]
+//! VariantName((), MsgPayload)
+//! ```
+//! 
+//! ## MsgPayload
+//! 
+//! The `MsgPayload` component of the enum variant captures all the OSC arguments
+//! associated with a message. This can be a tuple containing the expected types,
+//! or another type that implements `OscMessage`.
+//! 
+//! In the case where the `MsgPayload` is a type implementing `OscMessage`, it
+//! is deserialized recursively using the unmatched portion of the OSC address.
+//! This strategy was used in the example up top.
+//! 
+//! Alternatively, `#[derive(OscMessage)]` can be applied to any struct that
+//! implements both `serde::Serialize` and `serde::Deserialize`. This
+//! allows a struct to be used for the `MsgPayload` instead of a tuple,
+//! and allows for finer control of encoding via options exposed through Serde.
+//! 
+//! For example,
+//! 
+//! ```notest
+//! enum OscToplevel {
+//!     #[osc_address(address="control")]
+//!     Control((), ControlArgs),
+//! }
+//! #[derive(Serialize, Deserialize)]
+//! #[derive(OscMessage)]
+//! struct ControlArgs {
+//!     id: i32,
+//!     amplitude: f32,
+//!     length: i32,
+//! }
+//! ```
+//! 
+//! is functionally equivalent to
+//! 
+//! ```notest
+//! enum OscToplevel {
+//!     #[osc_address(address="control")]
+//!     Control((), (i32, f32, i32),
+//! }
+//! ```
+//! 
+//! except that the captured arguments are named fields instead of tuple arguments.
+//! 
+//! # Serialization
+//! 
+//! The above explanation of address matching and message decoding assumed deserializing
+//! a message into `OscMessage` types. Of course, `OscMessage`s can be serialized through
+//! any Serde backend as well.
 //! 
 //! [osc_address]: https://github.com/Wallacoloo/osc_address
 //! [serde_osc]: https://github.com/Wallacoloo/serde_osc
@@ -142,6 +213,10 @@ enum MsgArgsType {
     Struct,
 }
 
+/// Create a `impl OscMessage for T` implementation for a given type.
+/// 
+/// This is never called directly, but invoked by preceding the type
+/// definition with `[derive(OscMessage])`.
 #[proc_macro_derive(OscMessage, attributes(osc_address))]
 pub fn derive_osc_address(input: TokenStream) -> TokenStream {
     // Parse the string representation into a syntax tree
