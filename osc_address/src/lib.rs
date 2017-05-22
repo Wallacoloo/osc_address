@@ -70,12 +70,14 @@ pub trait OscMessage<'m> : serde::Serialize + serde::Deserialize<'m> {
 /// An OSC bundle consists of 0 or more OSC packets that are to be handled
 /// atomically. Each packet is itself a message or another bundle. The bundle
 /// also contains a time tag indicating when it should be handled.
+#[derive(Debug)]
 #[derive(Serialize, Deserialize)]
 pub struct OscBundle<M> {
     time_tag: (u32, u32),
     messages: Vec<OscPacket<M>>,
 }
 
+#[derive(Debug)]
 #[derive(Serialize, Deserialize)]
 #[serde(untagged)]
 /// An OSC packet represents either a single OSC message, or a bundle with an
@@ -86,7 +88,7 @@ pub enum OscPacket<M> {
 }
 
 /// Time tag assigned to each [`OscBundle`](struct.OscBundle.html).
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum OscTime {
     /// Indication to execute the bundle contents immediately upon receipt.
     Now,
@@ -94,7 +96,7 @@ pub enum OscTime {
     At(AbsOscTime),
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 /// OSC uses ntp time, i.e. absolute # of seconds since 1970 + a fraction of a second.
 pub struct AbsOscTime {
     sec: u32,
