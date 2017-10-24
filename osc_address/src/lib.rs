@@ -81,7 +81,7 @@ pub struct OscBundle<M> {
 #[derive(Serialize, Deserialize)]
 #[serde(untagged)]
 /// An OSC packet represents either a single OSC message, or a bundle with an
-/// associated time of zero or more OSC packets.
+/// associated time and zero or more OSC packets.
 pub enum OscPacket<M> {
     Message(M),
     Bundle(OscBundle<M>),
